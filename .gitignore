@@ -1,0 +1,25 @@
+# Python environment
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Generated outputs
+output/*
+
+# Large or private input photographs
+input/*.jpg
+input/*.jpeg
+input/*.png
+
+# Keep directory structures
+!input/.gitkeep
+!output/.gitkeep
+
+# IDE files
+.vscode/
+.idea/
+
+# Environment variables
+.env
