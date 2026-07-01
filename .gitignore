@@ -1,25 +1,121 @@
-# Python environment
-.venv/
+# ============================================================
+# Python
+# ============================================================
 
-# Python cache
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
+*.so
 
-# Generated outputs
-output/*
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
-# Large or private input photographs
-input/*.jpg
-input/*.jpeg
-input/*.png
+# ============================================================
+# Virtual environments
+# ============================================================
 
-# Keep directory structures
-!input/.gitkeep
-!output/.gitkeep
+.venv/
+venv/
+env/
+ENV/
 
-# IDE files
+# ============================================================
+# Environment variables / secrets
+# ============================================================
+
+.env
+.env.*
+!.env.example
+
+# ============================================================
+# OS / Editor files
+# ============================================================
+
+.DS_Store
+Thumbs.db
+
 .vscode/
 .idea/
 
-# Environment variables
-.env
+# ============================================================
+# Jupyter / notebooks
+# ============================================================
+
+.ipynb_checkpoints/
+
+# ============================================================
+# Sunit generated files
+# ============================================================
+
+app/output/
+output/
+
+app/data/normals/
+data/normals/
+
+app/data/debug/
+data/debug/
+
+*_debug/
+debug/
+
+# Generated relighting results
+*.tmp.png
+*.debug.png
+
+# ============================================================
+# Input images - avoid committing personal/test images
+# ============================================================
+
+app/input/
+input/
+
+# Keep folder structure if needed
+!app/input/.gitkeep
+!input/.gitkeep
+
+# ============================================================
+# Model weights / checkpoints
+# ============================================================
+
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+*.onnx
+
+checkpoints/
+weights/
+models/
+pretrained/
+
+# ============================================================
+# External repos / downloaded dependencies
+# ============================================================
+
+external/
+
+# If you want to commit DSINE as a submodule later,
+# remove external/ from gitignore and use git submodule properly.
+
+# ============================================================
+# Logs
+# ============================================================
+
+*.log
+logs/
+
+# ============================================================
+# Build / cache
+# ============================================================
+
+build/
+dist/
+*.egg-info/
+
+.cache/
