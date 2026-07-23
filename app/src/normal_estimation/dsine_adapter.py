@@ -4,6 +4,7 @@ import argparse
 import os
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -58,17 +59,10 @@ class DSINEAdapter:
             / self.config_path
         )
 
-        default_python = (
-            self.dsine_root
-            / ".venv"
-            / "bin"
-            / "python"
-        )
-
         self.python_executable = (
             python_executable.resolve()
             if python_executable is not None
-            else default_python
+            else Path(sys.executable).resolve()
         )
 
     def validate_installation(self) -> None:
@@ -78,7 +72,6 @@ class DSINEAdapter:
             self.input_dir,
             self.output_dir,
             self.absolute_config_path,
-            self.python_executable,
             (
                 self.project_dir
                 / "checkpoints"
@@ -104,7 +97,18 @@ class DSINEAdapter:
 
             raise DSINEError(
                 "DSINE installation is incomplete.\n"
+                f"DSINE root: {self.dsine_root}\n"
+                f"Python executable: {self.python_executable}\n"
+                f"Working directory: {self.project_dir}\n"
                 f"Missing paths:\n{formatted}"
+            )
+
+        if not self.python_executable.exists():
+            raise DSINEError(
+                "Python executable for DSINE does not exist.\n"
+                f"Python executable: {self.python_executable}\n"
+                "In Docker this should normally be the container Python, "
+                "for example /usr/local/bin/python3.10."
             )
 
     def build_environment(self) -> dict[str, str]:
@@ -124,12 +128,16 @@ class DSINEAdapter:
 
         env = os.environ.copy()
 
+        # DSINE must not inherit unrelated project paths.
+        # Otherwise packages such as "models" and "utils" may be
+        # imported from another repository.
         dsine_paths = [
             str(self.dsine_root),
             str(self.project_dir),
         ]
 
         env["PYTHONPATH"] = os.pathsep.join(dsine_paths)
+        env["PYTHONNOUSERSITE"] = "1"
 
         return env
 
@@ -185,6 +193,8 @@ class DSINEAdapter:
         dsine_env = self.build_environment()
 
         print("Running DSINE inference...")
+        print(f"Resolved DSINE root: {self.dsine_root}")
+        print(f"Python executable: {self.python_executable}")
         print(f"Working directory: {self.project_dir}")
         print("Command:")
         print(" ".join(command))
@@ -213,6 +223,10 @@ class DSINEAdapter:
         if completed.returncode != 0:
             raise DSINEError(
                 "DSINE inference failed.\n\n"
+                f"DSINE root: {self.dsine_root}\n"
+                f"Python executable: {self.python_executable}\n"
+                f"Working directory: {self.project_dir}\n"
+                f"PYTHONPATH: {dsine_env.get('PYTHONPATH', '')}\n\n"
                 f"Standard output:\n{completed.stdout}\n\n"
                 f"Standard error:\n{completed.stderr}"
             )
@@ -304,7 +318,7 @@ def main() -> None:
         default=None,
         help=(
             "Optional path to DSINE's Python executable. "
-            "Defaults to <dsine-root>/.venv/bin/python."
+            "Defaults to the current Python executable."
         ),
     )
 
