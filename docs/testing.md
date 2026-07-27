@@ -30,10 +30,9 @@ make test
 
 | Input | Parameters | Result | Background change | Foreground change | Notes |
 | --- | --- | --- | ---: | ---: | --- |
-| `docs/assets/original-portrait.png` | Natural preset, light `(0.55, -0.20, 0.80)` | Pass | `0.00000000` | `0.01237711` | Synthetic, one person, textured dark hair, plain studio background |
-| Local untracked portrait | Natural preset, light `(0.55, -0.20, 0.80)` | Pass | `0.00000000` | `0.01684618` | 477×1065, kept private and excluded from Git |
+| `docs/assets/original-portrait.png` | Natural preset, light `(0.55, -0.20, 0.80)` | Pass | `0.00000000` | `0.01684618` | Supplied 477×1065 portrait |
 
-Both outputs matched the processed input dimensions and contained only finite
+The output matched the processed input dimensions and contained only finite
 pixel values.
 
 ## Remaining coverage matrix
@@ -54,5 +53,5 @@ fixtures are added and processed:
 | Multiple-person image | Experimental / not yet run |
 | Non-portrait object | Experimental / not yet run |
 
-Sunit should not be described as universally validated from the current two
-successful portrait cases.
+Sunit should not be described as universally validated from the current
+portrait case.
