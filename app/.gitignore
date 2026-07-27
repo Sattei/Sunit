@@ -1,5 +1,8 @@
 # Python environment
 .venv/
+.venv_broken_conda_backup/
+.cache/
+../stage1-core-relighting/.venv/
 
 # Python cache
 __pycache__/
@@ -23,3 +26,22 @@ input/*.png
 
 # Environment variables
 .env
+
+# Runtime/generated backend files
+storage/
+output/
+.runtime/
+*.pid
+*.log
+__pycache__/
+*.pyc
+model_cache/
+
+# Generated inference artifacts
+data/masks/*_birefnet_alpha.png
+data/masks/*_relight_strength.png
+*:Zone.Identifier
+
+# Frontend dependencies/build output
+frontend/node_modules/
+frontend/dist/

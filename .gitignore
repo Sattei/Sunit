@@ -20,6 +20,9 @@ htmlcov/
 # ============================================================
 
 .venv/
+.venv_broken_conda_backup/
+app/.venv/
+stage1-core-relighting/.venv/
 venv/
 env/
 ENV/
@@ -38,6 +41,7 @@ ENV/
 
 .DS_Store
 Thumbs.db
+*:Zone.Identifier
 
 .vscode/
 .idea/
@@ -54,12 +58,17 @@ Thumbs.db
 
 app/output/
 output/
+app/storage/
+.runtime/
+*.pid
 
 app/data/normals/
 data/normals/
 
 app/data/debug/
 data/debug/
+app/data/masks/*_birefnet_alpha.png
+app/data/masks/*_relight_strength.png
 
 *_debug/
 debug/
@@ -119,3 +128,11 @@ dist/
 *.egg-info/
 
 .cache/
+model_cache/
+*.cache/
+huggingface-cache/
+torch-cache/
+
+# Frontend dependencies/build output
+app/frontend/node_modules/
+app/frontend/dist/

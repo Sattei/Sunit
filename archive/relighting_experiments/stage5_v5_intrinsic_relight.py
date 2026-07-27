@@ -1,3 +1,5 @@
+"""Archived V5 experiment; superseded by the canonical V8 engine."""
+
 from __future__ import annotations
 
 import argparse

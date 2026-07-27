@@ -1,3 +1,5 @@
+"""Archived early ratio-relighting experiment; not used in production."""
+
 import argparse
 from pathlib import Path
 

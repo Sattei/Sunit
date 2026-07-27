@@ -1,3 +1,5 @@
+"""Archived region-ratio experiment; superseded by the canonical V8 engine."""
+
 import argparse
 from pathlib import Path
 

@@ -1,3 +1,5 @@
+"""Archived V4 experiment; not used by the Sunit product."""
+
 from __future__ import annotations
 
 import argparse

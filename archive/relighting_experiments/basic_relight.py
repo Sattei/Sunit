@@ -1,3 +1,5 @@
+"""Archived early relighting experiment; not used by the Sunit product."""
+
 import argparse
 from pathlib import Path
 
