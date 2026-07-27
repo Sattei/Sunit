@@ -1,20 +1,42 @@
 from __future__ import annotations
 
+import logging
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
-from backend.config import APP_ROOT, DSINE_ROOT, JOBS_DIR, STAGE5_SCRIPT
+from rq import get_current_job
+
+from backend.config import (
+    APP_ROOT,
+    DSINE_PYTHON,
+    DSINE_ROOT,
+    INFERENCE_DEVICE,
+    JOBS_DIR,
+    STAGE5_SCRIPT,
+)
+from backend.queue import DEFAULT_JOB_TIMEOUT_SECONDS
+from src.masking.birefnet_matte import BiRefNetMatte
 from src.pipeline.auto_relight import (
     PipelineError,
     RelightSettings,
     run_auto_relight,
 )
-from backend.queue import DEFAULT_JOB_TIMEOUT_SECONDS
 
 
+LOGGER = logging.getLogger(__name__)
 STDOUT_TAIL_CHARS = 4000
+PUBLIC_STAGE_ERRORS = {
+    "validation": "The uploaded image is invalid.",
+    "input_preparation": "The image could not be prepared.",
+    "normal_estimation": "Surface-normal estimation failed.",
+    "matte_generation": "We could not isolate the portrait subject.",
+    "relighting": "The relighting operation failed.",
+    "output_saving": "The relighted image could not be saved.",
+}
+
+_BIREFNET_MODEL: BiRefNetMatte | None = None
 
 
 def _tail(text: str, limit: int = STDOUT_TAIL_CHARS) -> str:
@@ -35,6 +57,71 @@ def _float_from_payload(payload: dict[str, Any], key: str) -> float:
         return float(payload[key])
     except KeyError as exc:
         raise ValueError(f"Missing required payload field: {key}") from exc
+
+
+def _update_job_progress(stage: str, progress: int) -> None:
+    job = get_current_job()
+
+    if job is None:
+        return
+
+    job.meta["stage"] = stage
+    job.meta["progress"] = progress
+    job.save_meta()
+
+
+def _record_public_failure(error: PipelineError) -> None:
+    job = get_current_job()
+
+    if job is None:
+        return
+
+    message = PUBLIC_STAGE_ERRORS.get(
+        error.stage,
+        "Image processing failed.",
+    )
+
+    if (
+        error.stage == "matte_generation"
+        and "No clear foreground subject" in error.message
+    ):
+        message = (
+            "We could not detect a clear portrait subject. "
+            "Try a closer or clearer image."
+        )
+
+    job.meta["stage"] = error.stage
+    job.meta["progress"] = job.meta.get("progress", 0)
+    job.meta["public_error"] = {
+        "stage": error.stage,
+        "message": message,
+    }
+    job.save_meta()
+
+
+def _record_unexpected_failure() -> None:
+    job = get_current_job()
+
+    if job is None:
+        return
+
+    job.meta["stage"] = str(job.meta.get("stage") or "processing")
+    job.meta["progress"] = job.meta.get("progress", 0)
+    job.meta["public_error"] = {
+        "stage": job.meta["stage"],
+        "message": "Image processing failed. Please try again.",
+    }
+    job.save_meta()
+
+
+def get_birefnet_model() -> BiRefNetMatte:
+    global _BIREFNET_MODEL
+
+    if _BIREFNET_MODEL is None:
+        _BIREFNET_MODEL = BiRefNetMatte(device=INFERENCE_DEVICE)
+        _BIREFNET_MODEL.load()
+
+    return _BIREFNET_MODEL
 
 
 def run_relight_job(payload: dict) -> dict:
@@ -117,6 +204,8 @@ def run_auto_relight_job(payload: dict) -> dict:
             -> BiRefNet soft matte
             -> canonical V8 relighting
     """
+    _update_job_progress("queued", 0)
+
     image_path = _path_from_payload(payload, "image_path")
 
     job_id = str(
@@ -179,29 +268,34 @@ def run_auto_relight_job(payload: dict) -> dict:
             image_path=image_path,
             output_root=JOBS_DIR,
             dsine_root=DSINE_ROOT,
-            device=str(payload.get("device", "auto")),
+            dsine_python=DSINE_PYTHON,
+            device=str(payload.get("device", INFERENCE_DEVICE)),
             job_id=job_id,
             save_debug=bool(
                 payload.get("save_debug", False)
             ),
             settings=settings,
+            matte_model=get_birefnet_model(),
+            progress_callback=_update_job_progress,
+            accept_precreated_upload=True,
         )
 
     except PipelineError as error:
-        raise RuntimeError(
-            "Automatic Sunit pipeline failed.\n"
-            f"Stage: {error.stage}\n"
-            f"Details: {error}"
-        ) from error
+        _record_public_failure(error)
+        LOGGER.exception(
+            "Automatic Sunit pipeline failed at stage %s",
+            error.stage,
+        )
+        raise
+    except Exception:
+        _record_unexpected_failure()
+        LOGGER.exception("Automatic Sunit pipeline failed unexpectedly")
+        raise
+
+    _update_job_progress("completed", 100)
 
     return {
-        "status": "done",
+        "status": "finished",
         "job_id": job_id,
-        "image_path": result["input_path"],
-        "normal_path": result["normal_path"],
-        "matte_path": result["matte_path"],
-        "relight_strength_path": result[
-            "relight_strength_path"
-        ],
         "output_path": result["output_path"],
     }

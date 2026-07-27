@@ -1,16 +1,23 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import json
+import logging
+import os
+import re
 import shutil
 import sys
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+import torch
 from PIL import Image
+from PIL import UnidentifiedImageError
 
 
 APP_ROOT = Path(__file__).resolve().parents[2]
@@ -34,6 +41,16 @@ from src.relighting.engine import (
     save_rgb,
 )
 
+LOGGER = logging.getLogger(__name__)
+
+ALLOWED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
+MIN_IMAGE_SIDE = 128
+MAX_IMAGE_SIDE = 4096
+MAX_PROCESSING_SIDE = 1536
+JOB_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
+
+ProgressCallback = Callable[[str, int], None]
+
 
 class PipelineError(RuntimeError):
     """Raised when one stage of the Sunit pipeline fails."""
@@ -44,7 +61,8 @@ class PipelineError(RuntimeError):
         message: str,
     ) -> None:
         self.stage = stage
-        super().__init__(f"[{stage}] {message}")
+        self.message = message
+        super().__init__(message)
 
 
 @dataclass(frozen=True)
@@ -86,17 +104,118 @@ def choose_dsine_python(
         / "python"
     )
 
-    if dsine_venv_python.exists():
+    if (
+        dsine_venv_python.is_file()
+        and os.access(dsine_venv_python, os.X_OK)
+    ):
         return dsine_venv_python.resolve()
 
     return Path(sys.executable).resolve()
 
 
+def report_progress(
+    callback: ProgressCallback | None,
+    stage: str,
+    progress: int,
+) -> None:
+    if callback is not None:
+        callback(stage, progress)
+
+
+def cleanup_inference_memory() -> None:
+    gc.collect()
+
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
+def validate_image(image_path: Path) -> tuple[int, int]:
+    if not image_path.exists():
+        raise PipelineError(
+            "validation",
+            f"Input image was not found: {image_path}",
+        )
+
+    if not image_path.is_file():
+        raise PipelineError(
+            "validation",
+            f"Input path is not a file: {image_path}",
+        )
+
+    if image_path.suffix.lower() not in ALLOWED_IMAGE_SUFFIXES:
+        raise PipelineError(
+            "validation",
+            "Unsupported image type. Use JPG, JPEG, PNG, or WEBP.",
+        )
+
+    try:
+        with Image.open(image_path) as image:
+            image.verify()
+
+        with Image.open(image_path) as image:
+            width, height = image.size
+            image.convert("RGB").load()
+    except (UnidentifiedImageError, OSError, ValueError) as error:
+        raise PipelineError(
+            "validation",
+            "The input file is not a decodable image.",
+        ) from error
+
+    if min(width, height) < MIN_IMAGE_SIDE:
+        raise PipelineError(
+            "validation",
+            f"Image sides must be at least {MIN_IMAGE_SIDE} pixels.",
+        )
+
+    if max(width, height) > MAX_IMAGE_SIDE:
+        raise PipelineError(
+            "validation",
+            f"Image sides must not exceed {MAX_IMAGE_SIDE} pixels.",
+        )
+
+    return width, height
+
+
+def _validate_job_id(job_id: str) -> None:
+    if not JOB_ID_PATTERN.fullmatch(job_id):
+        raise PipelineError(
+            "input_preparation",
+            "Job ID may contain only letters, numbers, underscores, and hyphens.",
+        )
+
+
 def prepare_job_directories(
     output_root: Path,
     job_id: str,
+    *,
+    overwrite: bool = False,
+    accept_precreated_upload: bool = False,
 ) -> dict[str, Path]:
+    _validate_job_id(job_id)
+
     job_directory = output_root / job_id
+
+    if job_directory.exists():
+        existing_names = {
+            path.name
+            for path in job_directory.iterdir()
+        }
+        upload_only = (
+            accept_precreated_upload
+            and existing_names
+            and existing_names <= {"upload"}
+        )
+
+        if overwrite:
+            shutil.rmtree(job_directory)
+        elif not upload_only:
+            raise PipelineError(
+                "input_preparation",
+                (
+                    f"Job '{job_id}' already exists. "
+                    "Use overwrite=True (or --overwrite) to replace it."
+                ),
+            )
 
     directories = {
         "job": job_directory,
@@ -126,35 +245,17 @@ def run_auto_relight(
     settings: RelightSettings | None = None,
     matte_model: BiRefNetMatte | None = None,
     dsine_adapter: DSINEAdapter | None = None,
+    progress_callback: ProgressCallback | None = None,
+    overwrite: bool = False,
+    accept_precreated_upload: bool = False,
+    max_processing_side: int = MAX_PROCESSING_SIDE,
 ) -> dict[str, Any]:
     image_path = image_path.expanduser().resolve()
     output_root = output_root.expanduser().resolve()
     dsine_root = dsine_root.expanduser().resolve()
 
-    if not image_path.exists():
-        raise PipelineError(
-            "validation",
-            f"Input image was not found: {image_path}",
-        )
-
-    if not image_path.is_file():
-        raise PipelineError(
-            "validation",
-            f"Input path is not a file: {image_path}",
-        )
-
-    allowed_suffixes = {
-        ".jpg",
-        ".jpeg",
-        ".png",
-        ".webp",
-    }
-
-    if image_path.suffix.lower() not in allowed_suffixes:
-        raise PipelineError(
-            "validation",
-            "Unsupported image type. Use JPG, JPEG, PNG, or WEBP.",
-        )
+    report_progress(progress_callback, "validating", 5)
+    width, height = validate_image(image_path)
 
     settings = settings or RelightSettings()
     resolved_job_id = job_id or uuid.uuid4().hex[:12]
@@ -162,14 +263,17 @@ def run_auto_relight(
     directories = prepare_job_directories(
         output_root=output_root,
         job_id=resolved_job_id,
+        overwrite=overwrite,
+        accept_precreated_upload=accept_precreated_upload,
     )
 
     input_suffix = image_path.suffix.lower() or ".png"
 
-    stored_input = (
+    original_input = (
         directories["input"]
         / f"original{input_suffix}"
     )
+    processing_input = original_input
 
     normal_path = (
         directories["intermediate"]
@@ -191,15 +295,28 @@ def run_auto_relight(
         / "relighted.png"
     )
 
+    report_progress(progress_callback, "preparing_input", 10)
+
     try:
-        shutil.copy2(
-            image_path,
-            stored_input,
-        )
+        shutil.copy2(image_path, original_input)
+
+        if max(width, height) > max_processing_side:
+            scale = max_processing_side / float(max(width, height))
+            resized_size = (
+                max(1, round(width * scale)),
+                max(1, round(height * scale)),
+            )
+            processing_input = directories["input"] / "processed.png"
+
+            with Image.open(original_input) as image:
+                image.convert("RGB").resize(
+                    resized_size,
+                    Image.Resampling.LANCZOS,
+                ).save(processing_input)
     except Exception as error:
         raise PipelineError(
             "input_preparation",
-            str(error),
+            "The input image could not be prepared for processing.",
         ) from error
 
     if dsine_adapter is None:
@@ -214,16 +331,18 @@ def run_auto_relight(
         )
 
     print("\n[1/3] Estimating surface normals with DSINE...")
+    report_progress(progress_callback, "estimating_normals", 20)
 
     try:
         dsine_adapter.estimate(
-            input_image=stored_input,
+            input_image=processing_input,
             destination=normal_path,
         )
     except Exception as error:
+        LOGGER.exception("DSINE normal estimation failed")
         raise PipelineError(
             "normal_estimation",
-            str(error),
+            "Surface-normal estimation failed.",
         ) from error
 
     owns_matte_model = matte_model is None
@@ -234,11 +353,21 @@ def run_auto_relight(
         )
 
     print("\n[2/3] Generating the BiRefNet soft matte...")
+    report_progress(progress_callback, "generating_matte", 50)
 
     try:
-        with Image.open(stored_input) as image:
+        with Image.open(processing_input) as image:
             alpha = matte_model.predict(
                 image.convert("RGB")
+            )
+
+        foreground_fraction = float((alpha > 0.5).mean())
+        mean_alpha = float(alpha.mean())
+
+        if foreground_fraction < 0.01:
+            raise PipelineError(
+                "matte_generation",
+                "No clear foreground subject was detected.",
             )
 
         masks = build_relighting_masks(alpha)
@@ -253,21 +382,32 @@ def run_auto_relight(
             relight_strength_path,
         )
 
+        LOGGER.info(
+            "BiRefNet matte statistics: foreground_fraction=%.4f mean_alpha=%.4f",
+            foreground_fraction,
+            mean_alpha,
+        )
+
+    except PipelineError:
+        raise
     except Exception as error:
+        LOGGER.exception("BiRefNet matte generation failed")
         raise PipelineError(
             "matte_generation",
-            str(error),
+            "Portrait matte generation failed.",
         ) from error
 
     finally:
         if owns_matte_model:
             matte_model.unload()
+        cleanup_inference_memory()
 
     print("\n[3/3] Running the canonical V8 relighting engine...")
+    report_progress(progress_callback, "relighting", 75)
 
     try:
         image_srgb = load_rgb(
-            str(stored_input)
+            str(processing_input)
         )
 
         height, width = image_srgb.shape[:2]
@@ -307,31 +447,38 @@ def run_auto_relight(
             background_lock=settings.background_lock,
         )
 
-        save_rgb(
-            str(output_path),
-            output,
-        )
+    except Exception as error:
+        LOGGER.exception("Canonical relighting failed")
+        raise PipelineError(
+            "relighting",
+            "The relighting operation failed.",
+        ) from error
+    finally:
+        cleanup_inference_memory()
+
+    report_progress(progress_callback, "saving_output", 95)
+
+    try:
+        save_rgb(str(output_path), output)
 
         if save_debug:
             save_debug_maps(
-                str(
-                    directories["debug"]
-                    / "relighted.png"
-                ),
+                str(directories["debug"] / "relighted.png"),
                 debug_maps,
             )
-
     except Exception as error:
+        LOGGER.exception("Saving relighted output failed")
         raise PipelineError(
-            "relighting",
-            str(error),
+            "output_saving",
+            "The relighted image could not be saved.",
         ) from error
 
     result = {
         "status": "completed",
         "job_id": resolved_job_id,
         "job_directory": str(directories["job"]),
-        "input_path": str(stored_input),
+        "input_path": str(processing_input),
+        "original_input_path": str(original_input),
         "normal_path": str(normal_path),
         "matte_path": str(matte_path),
         "relight_strength_path": str(relight_strength_path),
@@ -340,6 +487,7 @@ def run_auto_relight(
 
     print("\nSunit automatic relighting completed.")
     print(f"Final output: {output_path}")
+    report_progress(progress_callback, "completed", 100)
 
     return result
 
@@ -393,6 +541,12 @@ def parse_args() -> argparse.Namespace:
         "--save-debug",
         action="store_true",
         help="Save V8 relighting debug maps.",
+    )
+
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Replace an existing generated job directory with the same ID.",
     )
 
     parser.add_argument(
@@ -476,6 +630,7 @@ def main() -> None:
             job_id=args.job_id,
             save_debug=args.save_debug,
             settings=settings,
+            overwrite=args.overwrite,
         )
 
     except PipelineError as error:
@@ -484,7 +639,7 @@ def main() -> None:
                 {
                     "status": "failed",
                     "stage": error.stage,
-                    "message": str(error),
+                    "message": error.message,
                 },
                 indent=2,
             ),
