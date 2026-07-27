@@ -1,0 +1,19 @@
+name: sunit
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: sunit-redis-compose
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    volumes:
+      - sunit-redis-data:/data
+
+volumes:
+  sunit-redis-data:
