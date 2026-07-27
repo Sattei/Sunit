@@ -60,9 +60,9 @@ class DSINEAdapter:
         )
 
         self.python_executable = (
-            python_executable.resolve()
+            python_executable.expanduser().absolute()
             if python_executable is not None
-            else Path(sys.executable).resolve()
+            else Path(sys.executable).absolute()
         )
 
     def validate_installation(self) -> None:

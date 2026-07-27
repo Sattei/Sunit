@@ -1,0 +1,7 @@
+-r base.txt
+
+fastapi>=0.115,<1
+uvicorn[standard]>=0.34,<1
+python-multipart>=0.0.20,<1
+redis>=5,<9
+rq>=2.1,<3

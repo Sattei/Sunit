@@ -14,8 +14,7 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 QUEUE_NAME = os.getenv("QUEUE_NAME", "sunit-relight")
 INFERENCE_DEVICE = os.getenv("INFERENCE_DEVICE", "auto")
 
-STAGE5_SCRIPT = APP_ROOT / "src" / "relighting" / "stage5_depth_face_relight.py"
-DSINE_ADAPTER = APP_ROOT / "src" / "normal_estimation" / "dsine_adapter.py"
+RELIGHT_SCRIPT = APP_ROOT / "scripts" / "relight_image.py"
 DSINE_ROOT = Path(
     os.getenv(
         "DSINE_ROOT",
@@ -25,7 +24,11 @@ DSINE_ROOT = Path(
 
 DSINE_PYTHON_VALUE = os.getenv("DSINE_PYTHON")
 DSINE_PYTHON = (
-    Path(DSINE_PYTHON_VALUE).expanduser().resolve()
+    Path(
+        os.path.abspath(
+            os.path.expanduser(DSINE_PYTHON_VALUE)
+        )
+    )
     if DSINE_PYTHON_VALUE
     else None
 )

@@ -14,7 +14,7 @@ from backend.config import (
     DSINE_ROOT,
     INFERENCE_DEVICE,
     JOBS_DIR,
-    STAGE5_SCRIPT,
+    RELIGHT_SCRIPT,
 )
 from backend.queue import DEFAULT_JOB_TIMEOUT_SECONDS
 from src.masking.birefnet_matte import BiRefNetMatte
@@ -125,7 +125,7 @@ def get_birefnet_model() -> BiRefNetMatte:
 
 
 def run_relight_job(payload: dict) -> dict:
-    """Run the existing Stage 5 relighting script in a worker subprocess."""
+    """Run the canonical engine CLI for the advanced image + normal workflow."""
     image_path = _path_from_payload(payload, "image_path")
     normal_path = _path_from_payload(payload, "normal_path")
     output_path = _path_from_payload(payload, "output_path")
@@ -133,7 +133,7 @@ def run_relight_job(payload: dict) -> dict:
 
     cmd = [
         sys.executable,
-        str(STAGE5_SCRIPT),
+        str(RELIGHT_SCRIPT),
         "--image",
         str(image_path),
         "--normal",

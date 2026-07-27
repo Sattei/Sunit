@@ -1,0 +1,14 @@
+-r api.txt
+
+# Install a CUDA-enabled PyTorch build appropriate for the host before this
+# file when the default package index does not provide the desired CUDA build.
+torch>=2.5,<3
+torchvision>=0.20,<1
+transformers>=4.47,<6
+
+# Imported directly by DSINE or BiRefNet remote model code.
+geffnet>=1.0.2,<2
+timm>=1.0,<2
+einops>=0.8,<1
+kornia>=0.8,<1
+tqdm>=4.66,<5

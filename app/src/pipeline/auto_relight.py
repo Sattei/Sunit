@@ -95,7 +95,11 @@ def choose_dsine_python(
     requested_python: Path | None,
 ) -> Path:
     if requested_python is not None:
-        return requested_python.expanduser().resolve()
+        return Path(
+            os.path.abspath(
+                os.path.expanduser(str(requested_python))
+            )
+        )
 
     dsine_venv_python = (
         dsine_root
@@ -108,9 +112,9 @@ def choose_dsine_python(
         dsine_venv_python.is_file()
         and os.access(dsine_venv_python, os.X_OK)
     ):
-        return dsine_venv_python.resolve()
+        return dsine_venv_python.absolute()
 
-    return Path(sys.executable).resolve()
+    return Path(sys.executable).absolute()
 
 
 def report_progress(

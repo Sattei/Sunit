@@ -10,6 +10,7 @@ from PIL import Image
 from src.pipeline.auto_relight import (
     PipelineError,
     RelightSettings,
+    choose_dsine_python,
     prepare_job_directories,
     run_auto_relight,
 )
@@ -49,6 +50,19 @@ def test_relight_settings_defaults() -> None:
     assert settings.strength == 0.65
     assert settings.background_lock is True
     assert settings.background_strength == 0.0
+
+
+def test_dsine_python_preserves_virtualenv_symlink(tmp_path: Path) -> None:
+    target = tmp_path / "base-python"
+    target.write_text("#!/bin/sh\n")
+    target.chmod(0o755)
+    virtualenv_python = tmp_path / "venv-python"
+    virtualenv_python.symlink_to(target)
+
+    selected = choose_dsine_python(tmp_path, virtualenv_python)
+
+    assert selected == virtualenv_python
+    assert selected.is_symlink()
 
 
 def test_missing_input_preserves_validation_stage(tmp_path: Path) -> None:

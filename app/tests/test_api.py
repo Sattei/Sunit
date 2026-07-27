@@ -51,6 +51,41 @@ def test_auto_endpoint_rejects_disguised_text_file() -> None:
     assert "decodable image" in response.json()["detail"]
 
 
+def test_auto_endpoint_rejects_unsupported_suffix() -> None:
+    response = client.post(
+        "/api/relight-auto",
+        files={"image": ("portrait.gif", image_bytes(), "image/gif")},
+    )
+
+    assert response.status_code == 415
+    assert response.json()["detail"] == "Use JPG, JPEG, PNG, or WEBP."
+
+
+def test_auto_endpoint_enforces_parameter_ranges() -> None:
+    response = client.post(
+        "/api/relight-auto",
+        files={"image": ("portrait.png", image_bytes(), "image/png")},
+        data={"person_strength": "1.1"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_public_failure_never_uses_rq_traceback() -> None:
+    fake_job = SimpleNamespace(
+        meta={},
+        exc_info="Traceback: /private/path/secret.py",
+    )
+
+    failure = main._public_failure(fake_job)
+
+    assert failure == {
+        "stage": "processing",
+        "message": "Image processing failed. Please try again.",
+    }
+    assert "/private/path" not in str(failure)
+
+
 def test_auto_endpoint_returns_clean_queue_contract() -> None:
     fake_job = SimpleNamespace(id="queued-job")
 
