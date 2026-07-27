@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="240" viewBox="0 0 1200 240" role="img" aria-labelledby="title description">
+  <title id="title">Sunit processing architecture</title>
+  <desc id="description">The React frontend submits to FastAPI, which queues one GPU worker. The worker runs DSINE, BiRefNet, and the V8 engine before returning an output.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" x2="1">
+      <stop offset="0" stop-color="#07101d"/>
+      <stop offset="1" stop-color="#111d31"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f5a72b"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="240" rx="28" fill="url(#background)"/>
+  <g font-family="Inter,Arial,sans-serif" text-anchor="middle">
+    <g fill="#14243b" stroke="#3f7df4" stroke-width="2">
+      <rect x="35" y="75" width="150" height="90" rx="16"/>
+      <rect x="235" y="75" width="150" height="90" rx="16"/>
+      <rect x="435" y="75" width="150" height="90" rx="16"/>
+      <rect x="635" y="75" width="150" height="90" rx="16"/>
+      <rect x="835" y="75" width="150" height="90" rx="16"/>
+      <rect x="1035" y="75" width="130" height="90" rx="16"/>
+    </g>
+    <g fill="#f6f1e8" font-size="20" font-weight="700">
+      <text x="110" y="116">React</text><text x="110" y="141">Frontend</text>
+      <text x="310" y="116">FastAPI</text><text x="310" y="141">Redis / RQ</text>
+      <text x="510" y="116">One GPU</text><text x="510" y="141">Worker</text>
+      <text x="710" y="128">DSINE</text>
+      <text x="910" y="128">BiRefNet</text>
+      <text x="1100" y="116">V8</text><text x="1100" y="141">Output</text>
+    </g>
+    <g stroke="#f5a72b" stroke-width="3" marker-end="url(#arrow)">
+      <line x1="188" y1="120" x2="226" y2="120"/>
+      <line x1="388" y1="120" x2="426" y2="120"/>
+      <line x1="588" y1="120" x2="626" y2="120"/>
+      <line x1="788" y1="120" x2="826" y2="120"/>
+      <line x1="988" y1="120" x2="1026" y2="120"/>
+    </g>
+  </g>
+</svg>
